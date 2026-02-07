@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CSEC | Official Election Portal 2026</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Lora:wght@700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        gov: { navy: '#001a33', gold: '#c5a059', red: '#b91c1c', green: '#16a34a', silver: '#f1f5f9' }
+                    },
+                    fontFamily: { sans: ['Inter', 'sans-serif'], serif: ['Lora', 'serif'], mono: ['JetBrains Mono', 'monospace'] }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { background: #000; display: flex; justify-content: center; overflow: hidden; font-family: 'Inter', sans-serif; }
+        #app-frame { width: 100%; height: 100vh; max-width: 480px; background: #f8fafc; position: relative; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 0 80px rgba(0,0,0,0.9); }
+
+        .screen { position: absolute; inset: 0; background: #f8fafc; display: none; flex-direction: column; z-index: 10; transition: opacity 0.3s ease; }
+        .screen.active { display: flex; }
+
+        /* Side Menu */
+        #side-menu { position: absolute; top: 0; left: -100%; width: 280px; height: 100%; background: #001a33; z-index: 3000; transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 10px 0 30px rgba(0,0,0,0.5); }
+        #side-menu.open { left: 0; }
+        .menu-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.5); z-index: 2500; display: none; }
+
+        /* LED Lights */
+        .led { width: 10px; height: 10px; border-radius: 50%; background: #222; transition: 0.2s; }
+        .led-green.active { background: #00ff00; box-shadow: 0 0 10px #00ff00; }
+        .led-red.active { background: #ff0000; box-shadow: 0 0 10px #ff0000; }
+
+        /* VVPAT */
+        #vvpat-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.98); z-index: 5000; display: none; flex-direction: column; align-items: center; justify-content: center; }
+        .vvpat-box { width: 320px; height: 450px; background: #222; border: 8px solid #333; border-radius: 12px; position: relative; }
+        .vvpat-window { width: 240px; height: 260px; background: #000; margin: 40px auto; border: 2px solid #444; overflow: hidden; position: relative; }
+        .paper-slip { width: 200px; background: #fff; position: absolute; left: 20px; top: -350px; padding: 20px; transition: top 3s cubic-bezier(0.1, 0.5, 0.1, 1); text-align: center; }
+        .paper-slip.scrolled { top: 20px; }
+
+        /* Luxury UI */
+        .btn-gov { background: #001a33; color: white; padding: 18px; border-radius: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; transition: 0.2s; border: 1px solid rgba(255,255,255,0.1); width: 100%; }
+        .btn-gov:active { transform: scale(0.96); opacity: 0.9; }
+        
+        #error-banner { position: fixed; top: -100px; left: 0; right: 0; background: #b91c1c; color: white; padding: 16px; text-align: center; z-index: 6000; transition: 0.4s; font-weight: 700; }
+        #error-banner.show { top: 0; }
+
+        .option-card { background: white; border: 2px solid #e2e8f0; border-radius: 16px; padding: 18px; margin-bottom: 12px; cursor: pointer; transition: 0.2s; display: flex; justify-content: space-between; align-items: center; }
+        .option-card.selected { border-color: #c5a059; background: #fffcf0; }
+        .radio-circle { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #cbd5e1; }
+        .selected .radio-circle { background: #001a33; border-color: #001a33; box-shadow: 0 0 0 4px rgba(0,26,51,0.1); }
+    </style>
+</head>
+<body>
+
+<div id="app-frame">
+    <button onclick="toggleMenu()" id="menu-trigger" class="fixed top-6 left-6 z-[4000] text-gov-navy text-2xl" style="display:none;">
+        <i class="fa-solid fa-bars-staggered"></i>
+    </button>
+
+    <div class="menu-overlay" id="menu-overlay" onclick="toggleMenu()"></div>
+    <div id="side-menu">
+        <div class="p-8 pt-16">
+            <div class="w-16 h-16 bg-white rounded-2xl p-2 mb-6">
+                <img src="https://lh3.googleusercontent.com/pw/AP1GczNES0W_KInOtd-P2aL06CKyFu66wZzDDtqDTKLFHs6IXaqnPP1Fsh7nqzdB3yhJ8zJhZ3LffGap02C9KqKh3cbMzwWsxIQ-gnK65m3OsrL_148BtJQLaKdi8y-xG_6imFStKHeK23OG79Tpq4a0AwTp=w508-h543-s-no-gm" class="w-full h-full object-contain">
+            </div>
+            <h3 class="text-white font-serif font-bold text-xl leading-tight">Election Commission<br><span class="text-gov-gold text-sm font-sans tracking-widest">OFFICIAL MENU</span></h3>
+            
+            <nav class="mt-12 space-y-4">
+                <a href="https://vishalsuryachamba-a11y.github.io/Central-Student-Authority/index.html" class="flex items-center gap-4 text-white/70 hover:text-white transition-colors p-3 rounded-xl hover:bg-white/5">
+                    <i class="fa-solid fa-house-chimney w-6"></i> <span class="text-sm font-bold uppercase tracking-wider">Official Home</span>
+                </a>
+                <button onclick="location.reload()" class="flex items-center gap-4 text-white/70 hover:text-white transition-colors p-3 rounded-xl hover:bg-white/5 w-full text-left">
+                    <i class="fa-solid fa-rotate w-6"></i> <span class="text-sm font-bold uppercase tracking-wider">Restart Portal</span>
+                </button>
+            </nav>
+        </div>
+        <div class="absolute bottom-8 left-8 text-white/20 text-[10px] font-black tracking-widest uppercase">Secured by CSEC v4.2</div>
+    </div>
+
+    <div id="error-banner"><i class="fa-solid fa-circle-exclamation mr-2"></i> <span id="error-txt">SYSTEM ERROR</span></div>
+
+    <div id="screen-boot" class="screen active items-center justify-center bg-gov-navy text-white">
+        <div class="w-24 h-24 bg-white rounded-[30px] p-4 animate-pulse"><img src="https://lh3.googleusercontent.com/pw/AP1GczNES0W_KInOtd-P2aL06CKyFu66wZzDDtqDTKLFHs6IXaqnPP1Fsh7nqzdB3yhJ8zJhZ3LffGap02C9KqKh3cbMzwWsxIQ-gnK65m3OsrL_148BtJQLaKdi8y-xG_6imFStKHeK23OG79Tpq4a0AwTp=w508-h543-s-no-gm" class="w-full h-full object-contain"></div>
+        <h1 class="font-serif text-2xl font-bold mt-8 text-center">Central Student<br>Election Commission</h1>
+        <div class="absolute bottom-16 w-12 h-1 bg-white/20 rounded-full overflow-hidden">
+            <div class="h-full bg-gov-gold animate-[loading_2s_infinite]"></div>
+        </div>
+        <style>@keyframes loading { 0% { width: 0%; } 100% { width: 100%; } }</style>
+    </div>
+
+    <div id="screen-home" class="screen">
+        <div class="h-[40%] bg-gov-navy flex flex-col items-center justify-center relative px-10">
+            <div class="w-24 h-24 bg-white rounded-[28px] p-3 shadow-2xl mb-6"><img src="https://lh3.googleusercontent.com/pw/AP1GczNES0W_KInOtd-P2aL06CKyFu66wZzDDtqDTKLFHs6IXaqnPP1Fsh7nqzdB3yhJ8zJhZ3LffGap02C9KqKh3cbMzwWsxIQ-gnK65m3OsrL_148BtJQLaKdi8y-xG_6imFStKHeK23OG79Tpq4a0AwTp=w508-h543-s-no-gm" class="w-full h-full object-contain"></div>
+            <h1 class="font-serif text-2xl font-bold text-white text-center leading-snug">Central Student<br>Election Commission</h1>
+            <div class="absolute -bottom-10 w-10/12 bg-white rounded-2xl shadow-xl p-6 flex justify-between border border-slate-50">
+                <div><p class="text-[9px] font-black text-slate-300 uppercase">Registry Status</p><p class="text-sm font-bold text-green-600">ONLINE</p></div>
+                <div class="text-right"><p class="text-[9px] font-black text-slate-300 uppercase">Session</p><p class="text-sm font-bold text-gov-navy">2026-TERM</p></div>
+            </div>
+        </div>
+        <div class="flex-1 flex flex-col justify-end p-10 pb-16">
+            <button onclick="handleNav('screen-auth')" class="btn-gov">Initialize Voting</button>
+            <p class="text-center text-[10px] text-slate-400 mt-6 font-bold tracking-widest">AUTHENTICATED PORTAL</p>
+        </div>
+    </div>
+
+    <div id="screen-auth" class="screen">
+        <div class="flex-1 px-10 flex flex-col justify-center text-center">
+            <div class="w-20 h-20 bg-slate-100 rounded-3xl flex items-center justify-center mx-auto mb-8"><i class="fa-solid fa-fingerprint text-3xl text-gov-navy"></i></div>
+            <h2 class="font-serif text-3xl font-bold text-gov-navy">Verify Identity</h2>
+            <p class="text-xs text-slate-400 mt-3 mb-12">Please enter your 14-digit Commission ID to proceed to the ballot.</p>
+            
+            <input type="tel" id="voter-id" placeholder="0000 0000 0000 00" maxlength="17" 
+                   class="w-full text-center text-2xl font-mono font-bold py-5 border-b-2 border-slate-200 focus:border-gov-navy outline-none tracking-widest bg-transparent">
+            
+            <button onclick="verifyUser()" id="btn-verify" class="btn-gov mt-12">Authenticate</button>
+        </div>
+    </div>
+
+    <div id="screen-dash" class="screen">
+        <div class="bg-gov-navy text-white p-6 pt-16 flex justify-between items-end shadow-2xl">
+            <div><h3 class="font-black text-xs uppercase" id="voter-name">---</h3><p class="text-[9px] text-white/40" id="voter-id-display">ID: ****</p></div>
+            <div class="flex items-center gap-2 bg-gov-red px-3 py-1 rounded text-[9px] font-black">
+                <span class="w-1.5 h-1.5 bg-white rounded-full animate-ping"></span> SECURE LIVE
+            </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-6">
+            <div class="mb-10"><p class="text-[10px] font-black text-gov-navy uppercase mb-5 tracking-[3px]">Step 1: Representatives</p>
+                <div id="cand-list"></div>
+            </div>
+            <div><p class="text-[10px] font-black text-gov-navy uppercase mb-5 tracking-[3px]">Step 2: Assign Title</p>
+                <div id="title-list"></div>
+            </div>
+        </div>
+
+        <div class="p-8 bg-white border-t">
+            <button onclick="confirmVote()" class="btn-gov">Cast Encrypted Vote</button>
+        </div>
+    </div>
+
+    <div id="vvpat-overlay">
+        <div class="flex justify-between w-[320px] mb-6 px-4">
+            <div class="flex items-center gap-2"><div class="led led-green active" id="led-ready"></div><span class="text-[10px] text-white font-bold">READY</span></div>
+            <div class="flex items-center gap-2"><span class="text-[10px] text-white font-bold">VOTED</span><div class="led led-red" id="led-voted"></div></div>
+        </div>
+
+        <div class="vvpat-box">
+            <div class="vvpat-window">
+                <div id="vvpat-slip" class="paper-slip">
+                    <p class="text-[8px] font-black text-slate-300">CSEC OFFICIAL VVPAT SLIP</p>
+                    <div class="my-4 border-y border-dashed border-slate-300 py-6">
+                        <p class="text-[9px] font-bold text-slate-400 uppercase">Selection Confirmed</p>
+                        <p id="roll-name" class="text-lg font-black text-gov-navy mt-1">---</p>
+                        <p id="roll-title" class="text-xs font-bold text-gov-red mt-1 uppercase tracking-tighter">---</p>
+                    </div>
+                    <p class="text-[8px] text-slate-300">UID: #SECURE-2026-X</p>
+                </div>
+            </div>
+            <div class="px-10"><div class="h-1 bg-black rounded-full overflow-hidden"><div id="audit-progress" class="h-full bg-gov-gold w-0"></div></div></div>
+        </div>
+        <p class="text-white/30 text-[9px] mt-8 font-mono animate-pulse uppercase tracking-widest">Transmitting to National Ledger...</p>
+    </div>
+
+    <div id="screen-success" class="screen items-center justify-center p-10 bg-[#f1f5f9]">
+        <div class="w-full bg-white rounded-[40px] shadow-2xl border border-white overflow-hidden">
+            <div class="h-3 bg-gov-navy"></div>
+            <div class="p-10 text-center">
+                <div class="w-24 h-24 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto mb-8 text-4xl shadow-inner">
+                    <i class="fa-solid fa-shield-check"></i>
+                </div>
+                <h2 class="font-serif text-3xl font-bold text-slate-800">Vote Successful</h2>
+                <p class="text-xs text-slate-400 mt-3">You have successfully participated in the 2026 Student Elections.</p>
+
+                <div class="mt-12 border-t border-dashed border-slate-100 pt-8 text-left space-y-5">
+                    <div class="flex justify-between"><span class="text-[10px] font-black text-slate-300 uppercase">Voter</span><span id="final-name" class="text-xs font-bold text-slate-700">--</span></div>
+                    <div class="flex justify-between"><span class="text-[10px] font-black text-slate-300 uppercase">Timestamp</span><span id="final-time" class="text-xs font-bold text-slate-700">--</span></div>
+                </div>
+                
+                <a href="https://vishalsuryachamba-a11y.github.io/Central-Student-Authority/index.html" 
+                   class="mt-10 block w-full py-4 bg-slate-100 text-gov-navy rounded-2xl text-xs font-bold uppercase tracking-widest hover:bg-gov-navy hover:text-white transition-all">
+                   Return to Official Home
+                </a>
+            </div>
+        </div>
+        <button onclick="location.reload()" class="mt-12 text-[10px] font-black text-gov-navy/40 uppercase tracking-[5px]">Exit Secure Session</button>
+    </div>
+</div>
+
+<script>
+    const firebaseConfig = { apiKey: "AIzaSyDVVEVhLabrza9OXEkcSfYEctDx80nwNPA", authDomain: "new-era-226f1.firebaseapp.com", projectId: "new-era-226f1", storageBucket: "new-era-226f1.firebasestorage.app", messagingSenderId: "55126293226", appId: "1:55126293226:web:8deb0c3b320f8d1f8ef593" };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const CANDIDATES = ["Yograj", "Aditya", "Mohit", "Bhoomika", "Than Singh", "Kartik", "Tushar", "Amit", "Vishal", "Ranveer Singh"];
+    const TITLES = ["Pappu Baba", "History Baba", "Museum Baba", "Poli Baba", "Zero Baba", "Error Baba", "Pir Baba", "Buddhu Baba"];
+
+    let currentUser = null;
+    let choices = { cand: null, title: null };
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playSound(type) {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        
+        if(type === 'click') {
+            osc.frequency.setValueAtTime(500, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+        } else if(type === 'beep') {
+            osc.type = 'square'; osc.frequency.value = 880;
+            gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+            osc.start(); osc.stop(audioCtx.currentTime + 1.8);
+        } else if(type === 'error') {
+            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.4);
+        }
+    }
+
+    function toggleMenu() {
+        playSound('click');
+        document.getElementById('side-menu').classList.toggle('open');
+        document.getElementById('menu-overlay').style.display = 
+            document.getElementById('side-menu').classList.contains('open') ? 'block' : 'none';
+    }
+
+    function showError(msg) {
+        playSound('error');
+        if(navigator.vibrate) navigator.vibrate([80, 50, 80]);
+        const b = document.getElementById('error-banner');
+        document.getElementById('error-txt').innerText = msg;
+        b.classList.add('show');
+        setTimeout(() => b.classList.remove('show'), 3000);
+    }
+
+    function handleNav(id) { playSound('click'); nav(id); }
+    function nav(id) { 
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        document.getElementById('menu-trigger').style.display = (id === 'screen-boot') ? 'none' : 'block';
+    }
+
+    document.getElementById('voter-id').addEventListener('input', (e) => {
+        let v = e.target.value.replace(/\D/g, '');
+        e.target.value = v.replace(/(\d{4})(?=\d)/g, '$1 ');
+    });
+
+    async function verifyUser() {
+        playSound('click');
+        const rawId = document.getElementById('voter-id').value.replace(/\s/g, '');
+        if(rawId.length < 14) { showError("INVALID CREDENTIALS"); return; }
+
+        document.getElementById('btn-verify').innerText = "VERIFYING...";
+        const doc = await db.collection("voters").doc(rawId).get();
+
+        if(doc.exists) {
+            currentUser = doc.data();
+            if(currentUser.hasVoted) { showError("ACCESS DENIED: ALREADY VOTED"); }
+            else {
+                document.getElementById('voter-name').innerText = currentUser.name;
+                document.getElementById('voter-id-display').innerText = "ID: •••• " + currentUser.id.slice(-4);
+                renderBallot();
+                nav('screen-dash');
+            }
+        } else { showError("CREDENTIALS NOT FOUND"); }
+        document.getElementById('btn-verify').innerText = "Authenticate";
+    }
+
+    function renderBallot() {
+        const cL = document.getElementById('cand-list');
+        const tL = document.getElementById('title-list');
+        cL.innerHTML = ''; tL.innerHTML = '';
+
+        CANDIDATES.forEach(c => {
+            const div = document.createElement('div');
+            div.className = 'option-card';
+            div.innerHTML = `<span class="font-bold text-sm text-slate-700">${c}</span> <div class="radio-circle"></div>`;
+            div.onclick = () => { playSound('click'); choices.cand = c; updateBallotUI('cand-list', div); };
+            cL.appendChild(div);
+        });
+
+        TITLES.forEach(t => {
+            const div = document.createElement('div');
+            div.className = 'option-card';
+            div.innerHTML = `<span class="font-bold text-[11px] text-gov-navy uppercase tracking-widest">${t}</span> <div class="radio-circle"></div>`;
+            div.onclick = () => { playSound('click'); choices.title = t; updateBallotUI('title-list', div); };
+            tL.appendChild(div);
+        });
+    }
+
+    function updateBallotUI(id, el) {
+        document.getElementById(id).querySelectorAll('.option-card').forEach(x => x.classList.remove('selected'));
+        el.classList.add('selected');
+    }
+
+    function confirmVote() {
+        if(!choices.cand || !choices.title) { showError("COMPLETE SELECTIONS"); return; }
+        playSound('click');
+        startVVPAT();
+    }
+
+    function startVVPAT() {
+        document.getElementById('roll-name').innerText = choices.cand;
+        document.getElementById('roll-title').innerText = choices.title;
+        
+        document.getElementById('vvpat-overlay').style.display = 'flex';
+        
+        setTimeout(() => {
+            document.getElementById('led-ready').classList.remove('active');
+            document.getElementById('led-voted').classList.add('active');
+            document.getElementById('vvpat-slip').classList.add('scrolled');
+            playSound('beep');
+            document.getElementById('audit-progress').style.transition = "width 3s linear";
+            document.getElementById('audit-progress').style.width = "100%";
+        }, 500);
+
+        setTimeout(() => saveVoteToDB(), 4500);
+    }
+
+    async function saveVoteToDB() {
+        try {
+            await db.collection("voters").doc(currentUser.id).update({
+                hasVoted: true,
+                votedFor: choices.cand,
+                assignedTitle: choices.title,
+                timestamp: new Date().toISOString()
+            });
+            
+            document.getElementById('final-name').innerText = currentUser.name;
+            document.getElementById('final-time').innerText = new Date().toLocaleString();
+            nav('screen-success');
+            document.getElementById('vvpat-overlay').style.display = 'none';
+        } catch(e) {
+            showError("SYNC ERROR: TRY AGAIN");
+            document.getElementById('vvpat-overlay').style.display = 'none';
+        }
+    }
+
+    setTimeout(() => nav('screen-home'), 3000);
+</script>
+</body>
+</html>
